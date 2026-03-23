@@ -93,14 +93,14 @@ void loop() {
   float horas = (tempoAtual - tempoAnterior) / 3600000.0f;
   tempoAnterior = tempoAtual;
 
-  if (sensorOk[0]) {
-    imprimirLeituras(0, ina1, "INA219 #1", horas);
-  }
+  // if (sensorOk[0]) {
+  //   imprimirLeituras(0, ina1, "INA219 #1", horas);
+  // }
   if (sensorOk[1]) {
-    imprimirLeituras(1, ina2, "INA219 #2", horas);
+    imprimirLeituras(1, ina2, "INA219 Indutor Primario", horas);
   }
   if (sensorOk[2]) {
-    imprimirLeituras(2, ina3, "INA219 #3", horas);
+    imprimirLeituras(2, ina3, "INA219 Bateria", horas);
   }
 
   Serial.println("--------------------\n");
