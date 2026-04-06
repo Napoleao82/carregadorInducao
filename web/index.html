@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor INA219 — ESP32 · PUC Goiás</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3d9eff;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --mono: "SF Mono", "Consolas", "Menlo", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2rem;
+    }
+    .academic-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem 1.5rem;
+      margin-bottom: 1rem;
+      padding: 1rem 1.1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .academic-header .brand {
+      flex: 0 0 auto;
+    }
+    .academic-header .brand img {
+      display: block;
+      height: 52px;
+      width: auto;
+      max-width: min(220px, 100%);
+      object-fit: contain;
+    }
+    .academic-header .lead {
+      flex: 1 1 200px;
+      min-width: 0;
+    }
+    .academic-header .lead h1 {
+      margin: 0 0 0.2rem;
+    }
+    .academic-header .institution {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0;
+    }
+    .credits {
+      margin-bottom: 1.25rem;
+      padding: 1rem 1.1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.85rem;
+    }
+    .credits h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .credits ul {
+      margin: 0 0 0.85rem;
+      padding-left: 1.15rem;
+      color: var(--text);
+    }
+    .credits ul:last-child {
+      margin-bottom: 0;
+    }
+    .credits li {
+      margin: 0.2rem 0;
+    }
+    .credits .prof-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    .credits .prof-list li {
+      padding-left: 0;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 0.25rem;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 1.25rem;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input[type="url"] {
+      width: min(100%, 28rem);
+      padding: 0.5rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.9rem;
+    }
+    input[type="url"]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    button {
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.primary {
+      background: #1f4d7a;
+      border-color: #2d6aad;
+      color: #fff;
+    }
+    button.primary:hover { background: #2563a8; }
+    button.danger {
+      background: #4a1f24;
+      border-color: #8b3a42;
+      color: #ffb4b0;
+    }
+    button.danger:hover { background: #6b252d; }
+    button.success {
+      background: #0d3d26;
+      border-color: #1f6b45;
+      color: #7ee787;
+    }
+    button.success:hover { background: #145a3a; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.ok { background: var(--ok); }
+    .dot.err { background: var(--err); }
+    .dot.wait { background: var(--warn); animation: pulse 1.2s ease infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+    }
+    .card h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .card .meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      font-family: var(--mono);
+    }
+    .card.fail {
+      border-color: #5c2a2a;
+    }
+    dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.35rem 1rem;
+      font-size: 0.85rem;
+    }
+    dt { color: var(--muted); }
+    dd {
+      margin: 0;
+      font-family: var(--mono);
+      text-align: right;
+    }
+    .section {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .section strong {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    pre.raw {
+      margin: 1rem 0 0;
+      padding: 1rem;
+      background: #080b0f;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.7rem;
+      overflow: auto;
+      max-height: 14rem;
+      color: #9fb3c8;
+    }
+    .toast {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .toast.show { display: block; }
+    .toast.ok { background: #0d2818; border: 1px solid #1f6b35; color: #7ee787; }
+    .toast.err { background: #2a1515; border: 1px solid #6b2a2a; color: #ff9b96; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="academic-header">
+      <a class="brand" href="https://www.pucgoias.edu.br/" target="_blank" rel="noopener noreferrer"
+         title="PUC Goiás — site oficial">
+        <img src="https://www.pucgoias.edu.br/wp-content/uploads/2020/08/puc-goias.svg"
+             width="200" height="52" alt="Logotipo Pontifícia Universidade Católica de Goiás" />
+      </a>
+      <div class="lead">
+        <h1>Monitor INA219 — carregamento por indução</h1>
+        <p class="institution">
+          Trabalho acadêmico · <strong>Engenharia Elétrica</strong> ·
+          Pontifícia Universidade Católica de Goiás (PUC Goiás)
+        </p>
+      </div>
+    </header>
+
+    <section class="credits" aria-label="Autoria do trabalho">
+      <h2>Alunos</h2>
+      <ul>
+        <li>Napoleao Menezes</li>
+        <li>Patrícia Nakamura Franca</li>
+        <li>Weisner Resende</li>
+        <li>Elves Alves Barbosa</li>
+        <li>Bruno Viana Pinheiro</li>
+        <li>Gabriela Moreira Fernandes</li>
+      </ul>
+      <h2>Orientação / docentes</h2>
+      <ul class="prof-list">
+        <li>Felipe Correa Veloso dos Santos</li>
+        <li>Cassio Hideki Fujisawa</li>
+      </ul>
+    </section>
+
+    <p class="sub">Atualização automática a cada 5 s · dados do ESP32 na sua rede local</p>
+
+    <div class="toolbar">
+      <label>
+        URL base do ESP32
+        <input type="url" id="baseUrl" placeholder="http://192.168.1.57" autocomplete="off" />
+      </label>
+      <button type="button" id="btnSave">Guardar URL</button>
+      <button type="button" class="primary" id="btnNow">Atualizar agora</button>
+      <button type="button" class="success" id="btnProcStart">Iniciar processo</button>
+      <button type="button" id="btnProcStop">Terminar processo</button>
+      <button type="button" class="danger" id="btnReset">Reiniciar ciclo (zerar médias/energia)</button>
+    </div>
+
+    <div class="status-bar">
+      <span class="pill"><span class="dot wait" id="dot"></span> <span id="pollState">A aguardar…</span></span>
+      <span>Última leitura: <strong id="lastAt">—</strong></span>
+      <span>Intervalo: 5 s</span>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <div class="grid" id="modules"></div>
+
+    <details style="margin-top:1.5rem;">
+      <summary style="cursor:pointer;color:var(--muted);font-size:0.85rem;">JSON bruto</summary>
+      <pre class="raw" id="raw"></pre>
+    </details>
+  </div>
+
+  <script>
+    const LS_KEY = "esp32_ina_base_url";
+    const POLL_MS = 5000;
+
+    const $ = (id) => document.getElementById(id);
+
+    function normalizeBase(url) {
+      return String(url || "").trim().replace(/\/+$/, "");
+    }
+
+    function loadBase() {
+      const v = localStorage.getItem(LS_KEY) || "http://192.168.1.57";
+      $("baseUrl").value = v;
+      return normalizeBase(v);
+    }
+
+    function showToast(msg, ok) {
+      const el = $("toast");
+      el.textContent = msg;
+      el.className = "toast show " + (ok ? "ok" : "err");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => { el.classList.remove("show"); }, 5000);
+    }
+
+    function setPollState(state) {
+      const dot = $("dot");
+      dot.className = "dot";
+      if (state === "ok") { dot.classList.add("ok"); $("pollState").textContent = "Ligado"; }
+      else if (state === "err") { dot.classList.add("err"); $("pollState").textContent = "Erro de rede"; }
+      else { dot.classList.add("wait"); $("pollState").textContent = "A carregar…"; }
+    }
+
+    function fmtNum(n, d) {
+      if (n == null || Number.isNaN(n)) return "—";
+      return Number(n).toFixed(d);
+    }
+
+    function fmtDurationMs(ms) {
+      if (ms == null || ms < 0) return "—";
+      const s = Math.floor(ms / 1000);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      const pad = (n) => String(n).padStart(2, "0");
+      return (h > 0 ? h + ":" : "") + pad(m) + ":" + pad(sec);
+    }
+
+    function wallLabel(iso, unix) {
+      if (iso && iso !== "null") return iso.replace("T", " ");
+      if (unix && Number(unix) > 1e9) {
+        return new Date(Number(unix) * 1000).toLocaleString("pt-BR");
+      }
+      return "—";
+    }
+
+    let procTick = null;
+    let procLive = { running: false, baseMs: 0, t0: 0 };
+
+    function updateProcessLiveLabel() {
+      const el = document.getElementById("procDurationLive");
+      if (!el) return;
+      if (!procLive.running) {
+        el.textContent = "";
+        return;
+      }
+      const ms = Math.round(procLive.baseMs + (performance.now() - procLive.t0));
+      el.textContent = " (" + fmtDurationMs(ms) + " — atualização local 1 s)";
+    }
+
+    function renderModule(key, m) {
+      if (!m.ok) {
+        return `
+          <div class="card fail">
+            <h2>${escapeHtml(m.name || key)}</h2>
+            <div class="meta">${escapeHtml(m.i2c_addr || "")} · offline</div>
+            <p style="margin:0;font-size:0.85rem;color:var(--muted);">Sensor não responde neste endereço.</p>
+          </div>`;
+      }
+      const ins = m.instant || {};
+      const avg = m.avg || {};
+      const en = m.energy || {};
+      return `
+        <div class="card">
+          <h2>${escapeHtml(m.name || key)}</h2>
+          <div class="meta">${escapeHtml(m.i2c_addr || "")} · ${escapeHtml(key)}</div>
+          <div class="section"><strong>Instantâneo</strong>
+            <dl>
+              <dt>Tensão carga</dt><dd>${fmtNum(ins.load_voltage_v, 3)} V</dd>
+              <dt>Corrente</dt><dd>${fmtNum(ins.current_ma, 2)} mA</dd>
+              <dt>Potência</dt><dd>${fmtNum(ins.power_mw, 2)} mW</dd>
+            </dl>
+          </div>
+          <div class="section"><strong>Média (desde último reset)</strong>
+            <dl>
+              <dt>Corrente méd.</dt><dd>${fmtNum(avg.current_ma, 2)} mA</dd>
+              <dt>Potência méd.</dt><dd>${fmtNum(avg.power_mw, 2)} mW</dd>
+              <dt>Amostras</dt><dd>${avg.samples != null ? avg.samples : "0"}</dd>
+            </dl>
+          </div>
+          <div class="section"><strong>Energia acumulada</strong>
+            <dl>
+              <dt>Wh</dt><dd>${fmtNum(en.wh, 6)}</dd>
+              <dt>mWh</dt><dd>${fmtNum(en.mwh, 4)}</dd>
+            </dl>
+          </div>
+        </div>`;
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function renderProcessCard(p) {
+      p = p || {};
+      const ntp = p.ntp_ok ? "sim" : "não";
+      const st = p.running ? "Em execução" : (p.elapsed_ms > 0 || p.start_wall_unix > 1e9 ? "Parado" : "Não iniciado");
+      const dur = fmtDurationMs(p.elapsed_ms);
+      const startL = wallLabel(p.start_iso, p.start_wall_unix);
+      const endL = p.running ? "—" : wallLabel(p.end_iso, p.end_wall_unix);
+
+      if (p.running) {
+        procLive = { running: true, baseMs: Number(p.elapsed_ms) || 0, t0: performance.now() };
+        if (procTick) clearInterval(procTick);
+        procTick = setInterval(updateProcessLiveLabel, 1000);
+        updateProcessLiveLabel();
+      } else {
+        procLive.running = false;
+        if (procTick) { clearInterval(procTick); procTick = null; }
+      }
+
+      return `
+        <div class="card" id="procCard">
+          <h2>Processo (teste)</h2>
+          <div class="meta">NTP ${ntp} · use Iniciar / Terminar</div>
+          <dl>
+            <dt>Estado</dt><dd>${escapeHtml(st)}</dd>
+            <dt>Duração</dt><dd>${escapeHtml(dur)}<span id="procDurationLive" style="color:var(--muted);font-size:0.8rem;"></span></dd>
+            <dt>Início</dt><dd style="font-size:0.85rem;">${escapeHtml(startL)}</dd>
+            <dt>Fim</dt><dd style="font-size:0.85rem;">${escapeHtml(endL)}</dd>
+          </dl>
+        </div>`;
+    }
+
+    async function fetchStatus() {
+      const base = normalizeBase($("baseUrl").value);
+      if (!base) {
+        showToast("Indique a URL base do ESP32 (ex.: http://192.168.1.57)", false);
+        setPollState("err");
+        return null;
+      }
+      const url = base + "/api/status";
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    function render(data) {
+      $("lastAt").textContent = new Date().toLocaleString("pt-BR");
+      $("raw").textContent = JSON.stringify(data, null, 2);
+
+      const head = document.createElement("div");
+      head.className = "grid";
+      head.innerHTML = `
+        <div class="card">
+          <h2>ESP32</h2>
+          <div class="meta">${escapeHtml(data.chip || "")}</div>
+          <dl>
+            <dt>Uptime</dt><dd>${(data.uptime_ms / 1000).toFixed(1)} s</dd>
+            <dt>Wi‑Fi RSSI</dt><dd>${data.wifi_rssi} dBm</dd>
+            <dt>IP</dt><dd>${escapeHtml(data.ip || "")}</dd>
+            <dt>Heap livre</dt><dd>${data.free_heap} B</dd>
+          </dl>
+        </div>`;
+
+      const mods = data.ina219 && data.ina219.modules ? data.ina219.modules : {};
+      const keys = Object.keys(mods);
+      let html = head.innerHTML + renderProcessCard(data.process);
+      for (const k of keys) {
+        html += renderModule(k, mods[k]);
+      }
+      $("modules").innerHTML = html;
+    }
+
+    let timer = null;
+
+    async function tick() {
+      setPollState("load");
+      try {
+        const data = await fetchStatus();
+        if (data) {
+          render(data);
+          setPollState("ok");
+        }
+      } catch (e) {
+        console.error(e);
+        setPollState("err");
+        showToast("Falha ao obter /api/status: " + (e.message || e), false);
+      }
+    }
+
+    async function postProcess(path, okMsg) {
+      const base = normalizeBase($("baseUrl").value);
+      if (!base) {
+        showToast("Indique a URL base do ESP32.", false);
+        return;
+      }
+      const res = await fetch(base + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || j.hint || "HTTP " + res.status);
+      showToast(okMsg, true);
+      await tick();
+    }
+
+    async function doProcessStart() {
+      $("btnProcStart").disabled = true;
+      try {
+        await postProcess("/api/process/start", "Processo iniciado.");
+      } catch (e) {
+        console.error(e);
+        showToast("Início falhou: " + (e.message || e), false);
+      } finally {
+        $("btnProcStart").disabled = false;
+      }
+    }
+
+    async function doProcessStop() {
+      $("btnProcStop").disabled = true;
+      try {
+        await postProcess("/api/process/stop", "Processo terminado.");
+      } catch (e) {
+        console.error(e);
+        showToast("Término falhou: " + (e.message || e), false);
+      } finally {
+        $("btnProcStop").disabled = false;
+      }
+    }
+
+    async function doReset() {
+      const base = normalizeBase($("baseUrl").value);
+      if (!base) {
+        showToast("Indique a URL base do ESP32.", false);
+        return;
+      }
+      $("btnReset").disabled = true;
+      try {
+        const res = await fetch(base + "/api/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || "HTTP " + res.status);
+        showToast("Ciclo reiniciado: médias e energia zeradas no ESP32.", true);
+        await tick();
+      } catch (e) {
+        console.error(e);
+        showToast("Reset falhou: " + (e.message || e), false);
+      } finally {
+        $("btnReset").disabled = false;
+      }
+    }
+
+    $("btnSave").addEventListener("click", () => {
+      const b = normalizeBase($("baseUrl").value);
+      if (b) localStorage.setItem(LS_KEY, b);
+      showToast("URL guardada neste navegador.", true);
+    });
+
+    $("btnNow").addEventListener("click", () => tick());
+    $("btnProcStart").addEventListener("click", () => doProcessStart());
+    $("btnProcStop").addEventListener("click", () => doProcessStop());
+    $("btnReset").addEventListener("click", () => doReset());
+
+    loadBase();
+    tick();
+    timer = setInterval(tick, POLL_MS);
+  </script>
+</body>
+</html>

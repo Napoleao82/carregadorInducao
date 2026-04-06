@@ -1,97 +1,127 @@
-# Carregamento por indução — projeto ESP32
+# Carregamento por indução — monitorização com ESP32 e INA219
 
-Firmware para ESP32 que lê **três sensores de corrente/tensão INA219** no barramento I2C, exibe tensão de barramento, corrente, potência instantânea e **energia acumulada** (integração numérica da potência no tempo) pela Serial.
-
-## Objetivo
-
-Monitorar até três canais de medição (por exemplo, diferentes pontos do circuito de carregamento por indução) com o mesmo microcontrolador, tolerando falha de um ou dois sensores desde que pelo menos um responda no I2C.
-
-## Hardware
-
-| Item | Descrição |
-|------|-----------|
-| Microcontrolador | ESP32 |
-| Sensores | Até 3× [Adafruit INA219](https://www.adafruit.com/product/904) (ou compatíveis), cada um com endereço I2C configurável (jumpers A0/A1 no breakout) |
-| Barramento I2C | **SDA = GPIO 15**, **SCL = GPIO 16** (definidos no código; ajuste se sua placa usar outros pinos) |
-
-Cada INA219 deve ter um **endereço I2C único**. Os valores padrão no sketch são `0x40`, `0x41` e `0x44` — altere as macros `ADDR_INA_1`, `ADDR_INA_2` e `ADDR_INA_3` para coincidir com os jumpers das suas placas.
-
-## Dependências (Arduino)
-
-- Biblioteca **Wire** (I2C), incluída no core do ESP32.
-- Biblioteca **Adafruit INA219** (normalmente instalada junto com dependências Adafruit Unified Sensor / BusIO pelo Gerenciador de Bibliotecas do Arduino IDE ou PlatformIO).
-
-## Visão geral do arquivo `carregadorInducao.ino`
-
-### Constantes e pinos
-
-- `PIN_SDA` / `PIN_SCL`: fixam os pinos I2C do ESP32 usados na chamada `Wire.begin(PIN_SDA, PIN_SCL)`.
-- `ADDR_INA_1`, `ADDR_INA_2`, `ADDR_INA_3`: endereços de 7 bits dos três módulos INA219.
-
-### Objetos globais
-
-- Três instâncias `Adafruit_INA219` (`ina1`, `ina2`, `ina3`), uma por endereço.
-- `sensorOk[3]`: indica se cada sensor inicializou com sucesso (`begin()` retornou verdadeiro).
-- `energia_mWh[3]`: acumulador de energia por canal, em **mWh** (miliwatt-hora).
-- `tempoAnterior`: instante anterior (em ms, via `millis()`) usado para calcular o intervalo \(\Delta t\) entre leituras.
-
-### Função `iniciarSensor`
-
-Tenta `sensor.begin()` no INA219 informado. Em caso de sucesso, imprime na Serial o nome lógico e o endereço em hexadecimal. Em falha, imprime mensagem orientando a checar fiação e endereço. Retorna `true`/`false` para preencher `sensorOk[]`.
-
-### `setup`
-
-1. Inicia Serial a **115200** baud e aguarda um curto `delay` para estabilizar.
-2. Inicia o I2C nos pinos definidos.
-3. Chama `iniciarSensor` para cada uma das três placas.
-4. Se **nenhum** sensor responder, imprime aviso e entra em loop infinito (o sketch para de avançar — evita leituras inválidas).
-5. Inicializa `tempoAnterior` com `millis()`.
-
-### Função estática `imprimirLeituras`
-
-Parâmetros: índice do canal (0–2), referência ao objeto INA219, título para o cabeçalho, e `horas` (fração de hora desde a última iteração).
-
-Para o sensor indicado:
-
-- Lê **tensão de barramento** (V), **corrente** (mA) e **potência** (mW) via API do Adafruit_INA219.
-- Atualiza a energia acumulada: `energia_mWh[indice] += potencia * horas` (potência em mW × tempo em horas ⇒ mWh).
-- Imprime bloco formatado com rótulo, valores e energia acumulada com 4 casas decimais.
-
-### `loop`
-
-1. Calcula `horas = (tempoAtual - tempoAnterior) / 3600000.0f` (conversão de milissegundos para horas).
-2. Atualiza `tempoAnterior` para o próximo ciclo.
-3. Para cada canal com `sensorOk[i] == true`, chama `imprimirLeituras` com o índice e o objeto correspondente.
-4. Imprime separador e aguarda **2 segundos** (`delay(2000)`).
-
-Assim, a energia integrada reflete a potência média no intervalo entre duas leituras bem-sucedidas, multiplicada pela duração desse intervalo em horas.
-
-## Saída Serial (exemplo de formato)
-
-Para cada sensor ativo, algo na linha de:
-
-- `------ INA219 #N ------`
-- Tensão de barramento em V
-- Corrente em mA
-- Potência em mW
-- Energia acumulada em mWh
-
-Entre ciclos, um separador e linha em branco.
-
-## Comportamento em falha parcial
-
-Se um ou dois INA219 falharem na inicialização, o programa **continua** e só imprime leituras dos sensores que passaram em `iniciarSensor`. Se os três falharem, o código **trava** no `while (1)` após a mensagem de erro.
-
-## Observações práticas
-
-- **Precisão da energia**: a integração é por retângulos (potência atual × \(\Delta t\)); com `delay(2000)` o passo é grosso. Para cargas que mudam rápido, intervalos menores melhoram a estimativa (a custo de mais tráfego Serial e CPU).
-- **Overflow de `millis()`**: em execuções muito longas, o wrap-around de `unsigned long` pode afetar uma única amostra de \(\Delta t\); em uso típico de laboratório isso costuma ser aceitável.
-- **Calibração**: o INA219 pode precisar de calibração fina (shunt, ganho) conforme o breakout; o sketch usa os padrões da biblioteca Adafruit.
+Trabalho académico do curso de **Engenharia Elétrica** da **Pontifícia Universidade Católica de Goiás (PUC Goiás)**: sistema para acompanhar tensão de carga, corrente, potência e energia em vários pontos de um circuito de carregamento indutivo, com firmware no **ESP32** e painel **web** opcional.
 
 ---
 
-# Carregamento por Inducao Projeto ESP32
+## Equipa do projeto
 
-Arduino — [site oficial](https://www.arduino.cc/)
+### Alunos
 
-Documentação de referência — [Arduino Help Center](https://support.arduino.cc/hc/en-us)
+- Napoleao Menezes  
+- Patrícia Nakamura Franca  
+- Weisner Resende  
+- Elves Alves Barbosa  
+- Bruno Viana Pinheiro  
+- Gabriela Moreira Fernandes  
+
+### Docentes
+
+- Felipe Correa Veloso dos Santos  
+- Cassio Hideki Fujisawa  
+
+---
+
+## Visão geral
+
+O microcontrolador lê **três módulos INA219** no barramento **I2C** (endereços **0x40**, **0x41** e **0x44**), associados a canais como indutor primário, secundário/BMS e BMS–bateria. Os valores instantâneos são amostrados periodicamente; calculam-se **médias** e **energia acumulada** por integração da potência no tempo.
+
+O repositório inclui:
+
+| Componente | Descrição |
+|------------|-----------|
+| `ServerEsp32/ServerEsp32.ino` | Sketch Arduino: Wi‑Fi, servidor HTTP na porta 80, API JSON e amostragem dos INA219 |
+| `web/index.html` | Página única (HTML/CSS/JS) que consulta a API no browser e mostra cartões por canal, processo de teste e JSON bruto |
+
+---
+
+## Hardware
+
+| Item | Notas |
+|------|--------|
+| **MCU** | ESP32 (modo estação Wi‑Fi) |
+| **Sensores** | 3× INA219 (ex.: Adafruit ou compatível), shunt típico 0,1 Ω |
+| **I2C** | No firmware atual: **SDA = GPIO 21**, **SCL = GPIO 22** (evitar GPIO de strap problemáticos, como o 15) |
+| **Endereços** | Um endereço 7 bits por placa; o sketch usa `0x41`, `0x40`, `0x44` — ajustar jumpers A0/A1 se necessário |
+
+**Tensão de carga (estimativa VIN+):** `tensão_no_barramento (VIN−) + getShuntVoltage_mV() / 1000`. O multímetro deve medir os mesmos nós (**VIN+**, **VIN−**, **GND do módulo**) para comparar com o indicado pelo chip.
+
+---
+
+## Firmware (`ServerEsp32.ino`)
+
+### Dependências
+
+- Core **ESP32** (Arduino IDE ou PlatformIO)  
+- Bibliotecas: **WiFi**, **WebServer**, **Wire**, **Adafruit INA219** (e dependências Adafruit BusIO, etc.)
+
+### Configuração (Wi‑Fi sem expor senha no Git)
+
+O sketch inclui `secrets.h`, que **não deve ser commitado** (está no `.gitignore`).
+
+1. Na pasta `ServerEsp32/`, copie o modelo e edite com a sua rede: `cp secrets.h.example secrets.h`
+2. Abra `secrets.h` e altere `WIFI_SSID` e `WIFI_PASS` (macros `#define`).
+3. Compilar e gravar o sketch; `secrets.h` não entra no Git (`.gitignore`).
+
+**Nota:** o Arduino IDE **não** usa ficheiros `.env` como o Node. Para injetar credenciais por **variáveis de ambiente** no compile, quem usa **PlatformIO** pode exportar `WIFI_SSID` / `WIFI_PASS` e usar `build_flags` com `-D` (ver comentário em `secrets.h.example`).
+
+Se o repositório já incluiu a senha no histórico do Git, convém **alterar a palavra-passe da rede Wi‑Fi**.
+
+4. Abrir o **Monitor série** (115200 baud) para ver o **IP** e o diagnóstico (INA219, I2C, NTP).
+
+### API REST (JSON)
+
+Base: `http://<IP_DO_ESP32>`
+
+| Método | Caminho | Função |
+|--------|---------|--------|
+| `GET` | `/api/status` | Estado do dispositivo, Wi‑Fi, cada INA219 (instantâneo, médias, energia), processo (início/fim, NTP) |
+| `POST` | `/api/reset` | Zera médias e energia acumulada nos canais |
+| `POST` | `/api/process/start` | Marca início do “processo” de teste (timestamp se NTP OK) |
+| `POST` | `/api/process/stop` | Marca fim do processo |
+
+O servidor envia cabeçalhos **CORS** para permitir chamadas a partir de `file://` ou de outro host (ex.: `localhost`) na mesma rede.
+
+### Calibração INA219
+
+O sketch usa `setCalibration_32V_2A()` nos canais que inicializam com sucesso. Para correntes mais baixas com melhor resolução, avaliar `setCalibration_32V_1A()` na biblioteca Adafruit (e respeitar limites de tensão no shunt).
+
+---
+
+## Interface web (`web/index.html`)
+
+1. Abrir o ficheiro no navegador **ou** servir a pasta `web/` com um servidor HTTP simples.  
+2. No campo **URL base do ESP32**, indicar `http://<IP_DO_ESP32>` (sem barra final).  
+3. **Guardar URL** grava no `localStorage` do browser.  
+4. A página faz *polling* a cada **5 s** para `GET /api/status` e atualiza os cartões.  
+5. Botões: iniciar/terminar processo, reiniciar ciclo (POST reset).
+
+A página inclui identificação da **PUC Goiás**, logótipo institucional e a lista de **alunos** e **docentes**.
+
+---
+
+## Estrutura do repositório
+
+```
+carregadorInducao/
+├── README.md                 ← este ficheiro
+├── ServerEsp32/
+│   └── ServerEsp32.ino       ← firmware ESP32 + API
+└── web/
+    └── index.html            ← painel de monitorização
+```
+
+Ficheiros de *log* (`*.log`) podem existir localmente para ensaios; não são obrigatórios para compilar o firmware.
+
+---
+
+## Referências
+
+- [Arduino](https://www.arduino.cc/) — documentação geral  
+- [Arduino Help Center](https://support.arduino.cc/hc/en-us)  
+- [PUC Goiás](https://www.pucgoias.edu.br/)  
+- [INA219 — Adafruit](https://www.adafruit.com/product/904)  
+
+---
+
+*Última atualização do README alinhada ao firmware em `ServerEsp32` e à página em `web/index.html`.*

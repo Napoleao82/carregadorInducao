@@ -1,0 +1,6 @@
+# Credenciais locais — nunca commitar
+ServerEsp32/secrets.h
+
+# Logs e artefactos locais
+*.log
+.DS_Store
