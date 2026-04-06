@@ -11,8 +11,12 @@
 #error "Crie ServerEsp32/secrets.h a partir de secrets.h.example com WIFI_SSID e WIFI_PASS."
 #endif
 
+// I2C: SDA/SCL com pull-up (os breakouts INA219 costumam trazer). Todos os GND juntos.
+// Alimentar INA219 em 3V3 com o ESP32 (evitar SDA/SCL a 5 V nos pinos do ESP32).
 #define PIN_SDA 21
 #define PIN_SCL 22
+#define I2C_HZ_SLOW 100000U
+#define I2C_HZ_FAST 400000U
 
 Adafruit_INA219 ina_prim(0x41);
 Adafruit_INA219 ina_sec(0x40);
@@ -83,9 +87,40 @@ static void runI2cScan() {
   i2c_scan_count = 0;
   for (uint8_t addr = 1; addr < 127 && i2c_scan_count < I2C_SCAN_MAX; addr++) {
     Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) {
+    uint8_t err = Wire.endTransmission();
+    if (err == 0) {
       i2c_scan_addrs[i2c_scan_count++] = addr;
     }
+  }
+}
+
+static bool inaAllModulesOk() {
+  for (size_t i = 0; i < INA_COUNT; i++) {
+    if (!ina_channels[i].ok) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Nova tentativa de begin + scan (hot-plug / cabo solto) e JSON sempre atual. */
+static void refreshI2cIfInaFaulty() {
+  if (inaAllModulesOk()) {
+    return;
+  }
+  Wire.setClock(I2C_HZ_SLOW);
+  for (size_t i = 0; i < INA_COUNT; i++) {
+    InaChannel &ch = ina_channels[i];
+    if (!ch.ok) {
+      ch.ok = ch.sensor->begin(&Wire);
+      if (ch.ok) {
+        ch.sensor->setCalibration_32V_2A();
+      }
+    }
+  }
+  runI2cScan();
+  if (inaAllModulesOk()) {
+    Wire.setClock(I2C_HZ_FAST);
   }
 }
 
@@ -213,13 +248,8 @@ static void appendOneInaModuleJson(String &body, InaChannel &ch) {
 }
 
 static void appendIna219Json(String &body) {
-  bool all_ok = true;
-  for (size_t i = 0; i < INA_COUNT; i++) {
-    if (!ina_channels[i].ok) {
-      all_ok = false;
-      break;
-    }
-  }
+  refreshI2cIfInaFaulty();
+  const bool all_ok = inaAllModulesOk();
 
   body += ",\"ina219\":{";
   body += "\"all_ok\":";
@@ -248,6 +278,13 @@ static void appendIna219Json(String &body) {
       body += "\"";
     }
     body += "]";
+    if (i2c_scan_count == 0) {
+      body += ",\"i2c_hint\":\"Nenhum ACK no barramento: 3V3+GND comuns nos 3 INA219, SDA->GPIO";
+      body += String(PIN_SDA);
+      body += " SCL->GPIO";
+      body += String(PIN_SCL);
+      body += ", enderecos 0x40/0x41/0x44, fios curtos; evitar 5V nos pinos I2C do ESP32.\"";
+    }
   }
 
   body += "}";
@@ -425,7 +462,7 @@ void handleNotFound() {
 }
 
 static bool beginInaChannels() {
-  Wire.setClock(400000);
+  Wire.setClock(I2C_HZ_SLOW);
   for (size_t i = 0; i < INA_COUNT; i++) {
     InaChannel &ch = ina_channels[i];
     ch.ok = ch.sensor->begin(&Wire);
@@ -439,14 +476,13 @@ static bool beginInaChannels() {
     }
   }
   if (any_fail) {
-    Wire.setClock(100000);
+    delay(50);
     for (size_t i = 0; i < INA_COUNT; i++) {
       InaChannel &ch = ina_channels[i];
       if (!ch.ok) {
         ch.ok = ch.sensor->begin(&Wire);
       }
     }
-    Wire.setClock(400000);
   }
 
   bool any_ok = false;
@@ -455,6 +491,9 @@ static bool beginInaChannels() {
       any_ok = true;
       ina_channels[i].sensor->setCalibration_32V_2A();
     }
+  }
+  if (any_ok) {
+    Wire.setClock(I2C_HZ_FAST);
   }
   return any_ok;
 }
@@ -467,6 +506,8 @@ void setup() {
   Serial.println("(A URL da API so aparece uma vez por boot; se repetir, o chip esta reiniciando.)\n");
 
   Wire.begin(PIN_SDA, PIN_SCL);
+  Wire.setClock(I2C_HZ_SLOW);
+  delay(150);
 
   bool any_ok = beginInaChannels();
 
